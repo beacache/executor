@@ -1273,5 +1273,3 @@ if not printidentity then
         print((prefix or "Current identity is") .. " " .. tostring(id))
     end
 end
-
-print("[Init] Leafy environment loaded successfully")
