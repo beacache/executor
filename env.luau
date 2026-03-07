@@ -333,11 +333,11 @@ getgenv().bit = bit32
 
 local utf8 = utf8 or {}
 
-local utf8_readonly = pcall(function()
+local utf8_readonly = not pcall(function()
     utf8.charpattern = "test"
 end)
 
-if not utf8_readonly then
+if utf8_readonly then
     local utf8_new = {}
     
     for k, v in pairs(utf8) do
@@ -349,7 +349,7 @@ if not utf8_readonly then
     utf8 = utf8_new
 else
     if not utf8.charpattern then
-        rawset(utf8, "charpattern", "[%z\x01-\x7F\xC2-\xF4][\x80-\xBF]*")
+        utf8.charpattern = "[%z\x01-\x7F\xC2-\xF4][\x80-\xBF]*"
     end
 end
 
@@ -690,8 +690,53 @@ if not table.maxn then
     end
 end
 
-if not string.split then
-    rawset(string, "split", function(s, separator)
+-- String library extensions with readonly check
+do
+    local string_writable = pcall(function()
+        local test_key = "__leafy_test_" .. tostring(math.random())
+        rawset(string, test_key, true)
+        rawset(string, test_key, nil)
+    end)
+    
+    local string_extensions = {}
+    local string_extended = false
+    
+    local function ensureStringExtended()
+        if string_extended then return end
+        if not string_writable then
+            local new_string = {}
+            for k, v in pairs(string) do
+                new_string[k] = v
+            end
+            for k, v in pairs(string_extensions) do
+                new_string[k] = v
+            end
+            getgenv().string = setmetatable(new_string, {
+                __index = string,
+                __newindex = function(t, k, v)
+                    rawset(new_string, k, v)
+                end
+            })
+            string_extended = true
+        end
+    end
+    
+    local function addStringFunc(name, func)
+        if string[name] then return end
+        string_extensions[name] = func
+        if string_writable then
+            pcall(function()
+                rawset(string, name, func)
+            end)
+        else
+            ensureStringExtended()
+            if getgenv().string and getgenv().string ~= string then
+                getgenv().string[name] = func
+            end
+        end
+    end
+    
+    addStringFunc("split", function(s, separator)
         separator = separator or ","
         local result = {}
         if separator == "" then
@@ -706,166 +751,264 @@ if not string.split then
         end
         return result
     end)
-end
-
-if not string.trim then
-    rawset(string, "trim", function(s)
+    
+    addStringFunc("trim", function(s)
         return s:match("^%s*(.-)%s*$")
     end)
 end
 
-if not math.sign then
-    rawset(math, "sign", function(n)
+-- Math library extensions with readonly check
+do
+    local math_writable = pcall(function()
+        local test_key = "__leafy_test_" .. tostring(math.random())
+        rawset(math, test_key, true)
+        rawset(math, test_key, nil)
+    end)
+    
+    local math_extensions = {}
+    local math_extended = false
+    
+    local function ensureMathExtended()
+        if math_extended then return end
+        if not math_writable then
+            local new_math = {}
+            for k, v in pairs(math) do
+                new_math[k] = v
+            end
+            for k, v in pairs(math_extensions) do
+                new_math[k] = v
+            end
+            getgenv().math = setmetatable(new_math, {
+                __index = math,
+                __newindex = function(t, k, v)
+                    rawset(new_math, k, v)
+                end
+            })
+            math_extended = true
+        end
+    end
+    
+    local function addMathFunc(name, func)
+        if math[name] then return end
+        math_extensions[name] = func
+        if math_writable then
+            pcall(function()
+                rawset(math, name, func)
+            end)
+        else
+            ensureMathExtended()
+            if getgenv().math and getgenv().math ~= math then
+                getgenv().math[name] = func
+            end
+        end
+    end
+    
+    addMathFunc("sign", function(n)
         if n > 0 then return 1
         elseif n < 0 then return -1
         else return 0 end
     end)
-end
-
-if not math.clamp then
-    rawset(math, "clamp", function(n, min, max)
+    
+    addMathFunc("clamp", function(n, min, max)
         if n < min then return min end
         if n > max then return max end
         return n
     end)
-end
-
-if not math.round then
-    rawset(math, "round", function(n)
+    
+    addMathFunc("round", function(n)
         return math.floor(n + 0.5)
     end)
-end
-
-if not math.lerp then
-    rawset(math, "lerp", function(a, b, t)
+    
+    addMathFunc("lerp", function(a, b, t)
         return a + (b - a) * t
     end)
-end
-
-if not math.map then
-    rawset(math, "map", function(n, inMin, inMax, outMin, outMax)
+    
+    addMathFunc("map", function(n, inMin, inMax, outMin, outMax)
         return (n - inMin) * (outMax - outMin) / (inMax - inMin) + outMin
     end)
+    
+    -- Noise function with permutation table
+    do
+        local permutation = {}
+        for i = 0, 255 do permutation[i] = i end
+        for i = 255, 1, -1 do
+            local j = math.random(0, i)
+            permutation[i], permutation[j] = permutation[j], permutation[i]
+        end
+        for i = 0, 255 do permutation[256 + i] = permutation[i] end
+
+        local function fade(t) return t * t * t * (t * (t * 6 - 15) + 10) end
+        local function lerp(t, a, b) return a + t * (b - a) end
+        local function grad(hash, x, y, z)
+            local h = hash % 16
+            local u = h < 8 and x or y
+            local v = h < 4 and y or (h == 12 or h == 14) and x or z
+            return ((h % 2 == 0) and u or -u) + ((h % 4 < 2) and v or -v)
+        end
+
+        addMathFunc("noise", function(x, y, z)
+            y = y or 0
+            z = z or 0
+            local X = math.floor(x) % 256
+            local Y = math.floor(y) % 256
+            local Z = math.floor(z) % 256
+            x = x - math.floor(x)
+            y = y - math.floor(y)
+            z = z - math.floor(z)
+            local u, v, w = fade(x), fade(y), fade(z)
+            local A  = permutation[X] + Y
+            local AA = permutation[A] + Z
+            local AB = permutation[A + 1] + Z
+            local B  = permutation[X + 1] + Y
+            local BA = permutation[B] + Z
+            local BB = permutation[B + 1] + Z
+            return lerp(w,
+                lerp(v, lerp(u, grad(permutation[AA],     x,     y,     z),
+                                grad(permutation[BA],     x - 1, y,     z)),
+                        lerp(u, grad(permutation[AB],     x,     y - 1, z),
+                                grad(permutation[BB],     x - 1, y - 1, z))),
+                lerp(v, lerp(u, grad(permutation[AA + 1], x,     y,     z - 1),
+                                grad(permutation[BA + 1], x - 1, y,     z - 1)),
+                        lerp(u, grad(permutation[AB + 1], x,     y - 1, z - 1),
+                                grad(permutation[BB + 1], x - 1, y - 1, z - 1))))
+        end)
+    end
 end
 
-if not math.noise then
-    local permutation = {}
-    for i = 0, 255 do permutation[i] = i end
-    for i = 255, 1, -1 do
-        local j = math.random(0, i)
-        permutation[i], permutation[j] = permutation[j], permutation[i]
-    end
-    for i = 0, 255 do permutation[256 + i] = permutation[i] end
-
-    local function fade(t) return t * t * t * (t * (t * 6 - 15) + 10) end
-    local function lerp(t, a, b) return a + t * (b - a) end
-    local function grad(hash, x, y, z)
-        local h = hash % 16
-        local u = h < 8 and x or y
-        local v = h < 4 and y or (h == 12 or h == 14) and x or z
-        return ((h % 2 == 0) and u or -u) + ((h % 4 < 2) and v or -v)
-    end
-
-    rawset(math, "noise", function(x, y, z)
-        y = y or 0
-        z = z or 0
-        local X = math.floor(x) % 256
-        local Y = math.floor(y) % 256
-        local Z = math.floor(z) % 256
-        x = x - math.floor(x)
-        y = y - math.floor(y)
-        z = z - math.floor(z)
-        local u, v, w = fade(x), fade(y), fade(z)
-        local A  = permutation[X] + Y
-        local AA = permutation[A] + Z
-        local AB = permutation[A + 1] + Z
-        local B  = permutation[X + 1] + Y
-        local BA = permutation[B] + Z
-        local BB = permutation[B + 1] + Z
-        return lerp(w,
-            lerp(v, lerp(u, grad(permutation[AA],     x,     y,     z),
-                            grad(permutation[BA],     x - 1, y,     z)),
-                    lerp(u, grad(permutation[AB],     x,     y - 1, z),
-                            grad(permutation[BB],     x - 1, y - 1, z))),
-            lerp(v, lerp(u, grad(permutation[AA + 1], x,     y,     z - 1),
-                            grad(permutation[BA + 1], x - 1, y,     z - 1)),
-                    lerp(u, grad(permutation[AB + 1], x,     y - 1, z - 1),
-                            grad(permutation[BB + 1], x - 1, y - 1, z - 1))))
+-- Coroutine library extensions with readonly check
+do
+    local coroutine_writable = pcall(function()
+        local test_key = "__leafy_test_" .. tostring(math.random())
+        rawset(coroutine, test_key, true)
+        rawset(coroutine, test_key, nil)
     end)
-end
-
-if not coroutine.isyieldable then
-    rawset(coroutine, "isyieldable", function(co)
+    
+    local coroutine_extensions = {}
+    local coroutine_extended = false
+    
+    local function ensureCoroutineExtended()
+        if coroutine_extended then return end
+        if not coroutine_writable then
+            local new_coroutine = {}
+            for k, v in pairs(coroutine) do
+                new_coroutine[k] = v
+            end
+            for k, v in pairs(coroutine_extensions) do
+                new_coroutine[k] = v
+            end
+            getgenv().coroutine = setmetatable(new_coroutine, {
+                __index = coroutine,
+                __newindex = function(t, k, v)
+                    rawset(new_coroutine, k, v)
+                end
+            })
+            coroutine_extended = true
+        end
+    end
+    
+    local function addCoroutineFunc(name, func)
+        if coroutine[name] then return end
+        coroutine_extensions[name] = func
+        if coroutine_writable then
+            pcall(function()
+                rawset(coroutine, name, func)
+            end)
+        else
+            ensureCoroutineExtended()
+            if getgenv().coroutine and getgenv().coroutine ~= coroutine then
+                getgenv().coroutine[name] = func
+            end
+        end
+    end
+    
+    addCoroutineFunc("isyieldable", function(co)
         co = co or coroutine.running()
         if not co then return true end
         return coroutine.status(co) ~= "dead"
     end)
-end
-
-if not coroutine.close then
-    rawset(coroutine, "close", function(co)
+    
+    addCoroutineFunc("close", function(co)
         return true
     end)
 end
 
-if not os then
+-- OS library
+if not getgenv().os then
     getgenv().os = {}
 end
 
-if not os.clock then
+local os_lib = getgenv().os or os or {}
+
+if not os_lib.clock then
     local start = tick()
-    os.clock = function()
+    os_lib.clock = function()
         return tick() - start
     end
 end
 
-if not os.difftime then
-    os.difftime = function(t2, t1)
+if not os_lib.difftime then
+    os_lib.difftime = function(t2, t1)
         return t2 - t1
     end
 end
 
-if not os.time then
-    os.time = function(t)
+if not os_lib.time then
+    os_lib.time = function(t)
         if t then
-            return DateTime.fromUniversalTime(
-                t.year or 1970, t.month or 1, t.day or 1,
-                t.hour or 0, t.min or 0, t.sec or 0
-            ).UnixTimestamp
+            local success, result = pcall(function()
+                return DateTime.fromUniversalTime(
+                    t.year or 1970, t.month or 1, t.day or 1,
+                    t.hour or 0, t.min or 0, t.sec or 0
+                ).UnixTimestamp
+            end)
+            if success then return result end
+            return 0
         end
-        return DateTime.now().UnixTimestamp
+        local success, result = pcall(function()
+            return DateTime.now().UnixTimestamp
+        end)
+        if success then return result end
+        return tick()
     end
 end
 
-if not os.date then
-    os.date = function(format, time)
-        time = time or os.time()
+if not os_lib.date then
+    os_lib.date = function(format, time)
+        time = time or os_lib.time()
         format = format or "%c"
         
-        local dt = DateTime.fromUnixTimestamp(time)
-        local utc = format:sub(1, 1) == "!"
-        if utc then format = format:sub(2) end
+        local success, result = pcall(function()
+            local dt = DateTime.fromUnixTimestamp(time)
+            local utc = format:sub(1, 1) == "!"
+            if utc then format = format:sub(2) end
+            
+            local t = utc and dt:ToUniversalTime() or dt:ToLocalTime()
+            
+            if format == "*t" then
+                return {
+                    year = t.Year,
+                    month = t.Month,
+                    day = t.Day,
+                    hour = t.Hour,
+                    min = t.Minute,
+                    sec = t.Second,
+                    wday = (t.Day % 7) + 1,
+                    yday = t.Day,
+                    isdst = false
+                }
+            end
+            
+            return dt:FormatUniversalTime(format:gsub("%%", ""), "en-us")
+        end)
         
-        local t = utc and dt:ToUniversalTime() or dt:ToLocalTime()
-        
-        if format == "*t" then
-            return {
-                year = t.Year,
-                month = t.Month,
-                day = t.Day,
-                hour = t.Hour,
-                min = t.Minute,
-                sec = t.Second,
-                wday = (t.Day % 7) + 1,
-                yday = t.Day,
-                isdst = false
-            }
-        end
-        
-        return dt:FormatUniversalTime(format:gsub("%%", ""), "en-us")
+        if success then return result end
+        return tostring(time)
     end
 end
 
+getgenv().os = os_lib
+
+-- Buffer library
 if not buffer then
     local bufferLib = {}
     
@@ -1031,6 +1174,40 @@ if not buffer then
         bufferLib.writeu32(buf, offset, u)
     end
     
+    function bufferLib.writef64(buf, offset, value)
+        local lo, hi
+        if value ~= value then
+            lo = 0
+            hi = 0x7FF80000
+        elseif value == math.huge then
+            lo = 0
+            hi = 0x7FF00000
+        elseif value == -math.huge then
+            lo = 0
+            hi = 0xFFF00000
+        elseif value == 0 then
+            lo = 0
+            hi = 0
+        else
+            local sign = value < 0 and 1 or 0
+            value = math.abs(value)
+            local exp = math.floor(math.log(value) / math.log(2))
+            local frac = (value / 2^exp - 1) * 4503599627370496
+            exp = exp + 1023
+            if exp <= 0 then
+                frac = value * 2^1074
+                exp = 0
+            elseif exp >= 2047 then
+                exp = 2047
+                frac = 0
+            end
+            lo = frac % 4294967296
+            hi = bit32.lshift(sign, 31) + bit32.lshift(exp, 20) + math.floor(frac / 4294967296)
+        end
+        bufferLib.writeu32(buf, offset, lo)
+        bufferLib.writeu32(buf, offset + 4, hi)
+    end
+    
     function bufferLib.copy(target, targetOffset, source, sourceOffset, count)
         sourceOffset = sourceOffset or 0
         count = count or source._size - sourceOffset
@@ -1064,6 +1241,7 @@ if not buffer then
     getgenv().buffer = bufferLib
 end
 
+-- Utility functions
 if not typeof then
     getgenv().typeof = function(v)
         local t = type(v)
