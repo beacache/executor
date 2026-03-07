@@ -692,48 +692,66 @@ if not string.split then
     end
 end
 
-if not string.trim then
-    string.trim = function(s)
-        return s:match("^%s*(.-)%s*$")
-    end
+if not string.split then
+    rawset(string, "split", function(s, separator)
+        separator = separator or ","
+        local result = {}
+        if separator == "" then
+            for i = 1, #s do
+                result[i] = string.sub(s, i, i)
+            end
+        else
+            local pattern = "(.-)" .. separator:gsub("([^%w])", "%%%1")
+            for part in (s .. separator):gmatch(pattern) do
+                table.insert(result, part)
+            end
+        end
+        return result
+    end)
 end
 
+if not string.trim then
+    rawset(string, "trim", function(s)
+        return s:match("^%s*(.-)%s*$")
+    end)
+end
+
+-- Math extensions
 if not math.sign then
-    math.sign = function(n)
+    rawset(math, "sign", function(n)
         if n > 0 then return 1
         elseif n < 0 then return -1
         else return 0 end
-    end
+    end)
 end
 
 if not math.clamp then
-    math.clamp = function(n, min, max)
+    rawset(math, "clamp", function(n, min, max)
         if n < min then return min end
         if n > max then return max end
         return n
-    end
+    end)
 end
 
 if not math.round then
-    math.round = function(n)
+    rawset(math, "round", function(n)
         return math.floor(n + 0.5)
-    end
+    end)
 end
 
 if not math.lerp then
-    math.lerp = function(a, b, t)
+    rawset(math, "lerp", function(a, b, t)
         return a + (b - a) * t
-    end
+    end)
 end
 
 if not math.map then
-    math.map = function(n, inMin, inMax, outMin, outMax)
+    rawset(math, "map", function(n, inMin, inMax, outMin, outMax)
         return (n - inMin) * (outMax - outMin) / (inMax - inMin) + outMin
-    end
+    end)
 end
 
 if not math.noise then
-    -- Simple Perlin-like noise implementation
     local permutation = {}
     for i = 0, 255 do permutation[i] = i end
     for i = 255, 1, -1 do
@@ -741,7 +759,7 @@ if not math.noise then
         permutation[i], permutation[j] = permutation[j], permutation[i]
     end
     for i = 0, 255 do permutation[256 + i] = permutation[i] end
-    
+
     local function fade(t) return t * t * t * (t * (t * 6 - 15) + 10) end
     local function lerp(t, a, b) return a + t * (b - a) end
     local function grad(hash, x, y, z)
@@ -750,54 +768,129 @@ if not math.noise then
         local v = h < 4 and y or (h == 12 or h == 14) and x or z
         return ((h % 2 == 0) and u or -u) + ((h % 4 < 2) and v or -v)
     end
-    
-    math.noise = function(x, y, z)
+
+    rawset(math, "noise", function(x, y, z)
         y = y or 0
         z = z or 0
-        
         local X = math.floor(x) % 256
         local Y = math.floor(y) % 256
         local Z = math.floor(z) % 256
-        
         x = x - math.floor(x)
         y = y - math.floor(y)
         z = z - math.floor(z)
-        
-        local u = fade(x)
-        local v = fade(y)
-        local w = fade(z)
-        
-        local A = permutation[X] + Y
+        local u, v, w = fade(x), fade(y), fade(z)
+        local A  = permutation[X] + Y
         local AA = permutation[A] + Z
         local AB = permutation[A + 1] + Z
-        local B = permutation[X + 1] + Y
+        local B  = permutation[X + 1] + Y
         local BA = permutation[B] + Z
         local BB = permutation[B + 1] + Z
-        
-        return lerp(w, lerp(v, lerp(u, grad(permutation[AA], x, y, z),
-                                       grad(permutation[BA], x - 1, y, z)),
-                               lerp(u, grad(permutation[AB], x, y - 1, z),
-                                       grad(permutation[BB], x - 1, y - 1, z))),
-                       lerp(v, lerp(u, grad(permutation[AA + 1], x, y, z - 1),
-                                       grad(permutation[BA + 1], x - 1, y, z - 1)),
-                               lerp(u, grad(permutation[AB + 1], x, y - 1, z - 1),
-                                       grad(permutation[BB + 1], x - 1, y - 1, z - 1))))
-    end
+        return lerp(w,
+            lerp(v, lerp(u, grad(permutation[AA],     x,     y,     z),
+                            grad(permutation[BA],     x - 1, y,     z)),
+                    lerp(u, grad(permutation[AB],     x,     y - 1, z),
+                            grad(permutation[BB],     x - 1, y - 1, z))),
+            lerp(v, lerp(u, grad(permutation[AA + 1], x,     y,     z - 1),
+                            grad(permutation[BA + 1], x - 1, y,     z - 1)),
+                    lerp(u, grad(permutation[AB + 1], x,     y - 1, z - 1),
+                            grad(permutation[BB + 1], x - 1, y - 1, z - 1))))
+    end)
+end
+
+if not table.clear then
+    rawset(table, "clear", function(t)
+        for k in pairs(t) do t[k] = nil end
+    end)
+end
+
+if not table.clone then
+    rawset(table, "clone", function(t)
+        local new = {}
+        for k, v in pairs(t) do new[k] = v end
+        return setmetatable(new, getmetatable(t))
+    end)
+end
+
+if not table.create then
+    rawset(table, "create", function(count, value)
+        local t = {}
+        for i = 1, count do t[i] = value end
+        return t
+    end)
+end
+
+if not table.find then
+    rawset(table, "find", function(t, value, init)
+        init = init or 1
+        for i = init, #t do
+            if t[i] == value then return i end
+        end
+        return nil
+    end)
+end
+
+if not table.freeze then
+    rawset(table, "freeze", function(t)
+        return setmetatable({}, {
+            __index = t,
+            __newindex = function()
+                error("Attempt to modify a frozen table", 2)
+            end,
+            __metatable = "frozen"
+        })
+    end)
+end
+
+if not table.isfrozen then
+    rawset(table, "isfrozen", function(t)
+        return getmetatable(t) == "frozen"
+    end)
+end
+
+if not table.move then
+    rawset(table, "move", function(a1, f, e, t, a2)
+        a2 = a2 or a1
+        if t > f then
+            for i = e - f, 0, -1 do a2[t + i] = a1[f + i] end
+        else
+            for i = 0, e - f do a2[t + i] = a1[f + i] end
+        end
+        return a2
+    end)
+end
+
+if not table.pack then
+    rawset(table, "pack", function(...)
+        return {n = select("#", ...), ...}
+    end)
+end
+
+if not table.unpack then
+    rawset(table, "unpack", unpack)
+end
+
+if not table.maxn then
+    rawset(table, "maxn", function(t)
+        local max = 0
+        for k in pairs(t) do
+            if type(k) == "number" and k > max then max = k end
+        end
+        return max
+    end)
 end
 
 if not coroutine.isyieldable then
-    coroutine.isyieldable = function(co)
+    rawset(coroutine, "isyieldable", function(co)
         co = co or coroutine.running()
         if not co then return true end
         return coroutine.status(co) ~= "dead"
-    end
+    end)
 end
 
 if not coroutine.close then
-    coroutine.close = function(co)
-        -- Luau doesn't have true close, this is a compatibility shim
+    rawset(coroutine, "close", function(co)
         return true
-    end
+    end)
 end
 
 if not os then
