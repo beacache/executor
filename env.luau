@@ -1241,7 +1241,6 @@ if not buffer then
     getgenv().buffer = bufferLib
 end
 
--- Utility functions
 if not typeof then
     getgenv().typeof = function(v)
         local t = type(v)
@@ -1252,18 +1251,6 @@ if not typeof then
             end
         end
         return t
-    end
-end
-
-if not warn then
-    getgenv().warn = function(...)
-        local args = {...}
-        local str = ""
-        for i, v in ipairs(args) do
-            str = str .. tostring(v)
-            if i < #args then str = str .. " " end
-        end
-        print("[WARN]:", str)
     end
 end
 
