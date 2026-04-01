@@ -194,6 +194,7 @@ local env = getgenv(function() end)
 
 env.getactors           = getactors
 env.run_on_actor        = run_on_actor
+env.runonactor        = run_on_actor
 env.isparallel          = isparallel
 env.checkparallel       = isparallel
 env.inparallel          = isparallel
