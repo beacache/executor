@@ -190,7 +190,7 @@ local function get_comm_channel(id)
     return eventObj
 end
 
-local env = getfenv(function() end)
+local env = getgenv(function() end)
 
 env.getactors           = getactors
 env.run_on_actor        = run_on_actor
@@ -199,5 +199,3 @@ env.checkparallel       = isparallel
 env.inparallel          = isparallel
 env.create_comm_channel = create_comm_channel
 env.get_comm_channel    = get_comm_channel
-
-print("[CattStar] Actor Library loaded successfully.")
